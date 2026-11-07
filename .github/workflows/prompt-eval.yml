@@ -61,6 +61,8 @@ jobs:
       SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
       # Set the repo variable LLMREG_PROVIDER=mock to run the pipeline without an API key.
       LLMREG_PROVIDER: ${{ vars.LLMREG_PROVIDER }}
+      # Mock only: inject deterministic misclassifications (0-1) to demo the gate.
+      LLMREG_MOCK_ERROR_RATE: ${{ vars.LLMREG_MOCK_ERROR_RATE }}
       LLMREG_DB: .regress/history.db
     steps:
       - uses: actions/checkout@v4

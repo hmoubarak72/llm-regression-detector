@@ -1,4 +1,4 @@
 # The prompt version currently in production. CI evaluates this file's target.
 # To ship a prompt change: add a NEW version file (never edit an existing one),
 # point `active` at it, and open a PR.
-active: v1.0.0.yaml
+active: v1.1.0.yaml

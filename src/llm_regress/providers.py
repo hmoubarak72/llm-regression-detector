@@ -122,7 +122,7 @@ class MockProvider:
             raise ValueError(role)
         self.role = role
         self.error_rate = (
-            float(os.environ.get("LLMREG_MOCK_ERROR_RATE", "0")) if error_rate is None else error_rate
+            float(os.environ.get("LLMREG_MOCK_ERROR_RATE") or "0") if error_rate is None else error_rate
         )
 
     async def complete(self, messages, *, model, temperature, max_tokens, json_schema=None,
