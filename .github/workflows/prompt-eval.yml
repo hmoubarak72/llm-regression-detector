@@ -1,12 +1,10 @@
 name: prompt-eval
 
 on:
+  # No path filter on PRs: `eval` is a required check, so it must report on
+  # every PR. The `changes` job decides whether the expensive eval runs; a
+  # skipped `eval` job counts as passing for branch protection.
   pull_request:
-    paths:
-      - "prompts/**"
-      - "golden/**"
-      - "config/thresholds.yaml"
-      - "src/**"
   push:
     branches: [main]
     paths:
@@ -14,6 +12,7 @@ on:
       - "golden/**"
       - "config/thresholds.yaml"
       - "src/**"
+      - ".github/workflows/prompt-eval.yml"
   schedule:
     # Nightly run on main with no code change. This is what catches
     # provider-side changes (e.g. a model alias being updated) and slow drift.
@@ -29,7 +28,32 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.diff.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Detect eval-relevant changes
+        id: diff
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          changed=$(git diff --name-only "origin/${{ github.base_ref }}...HEAD")
+          echo "$changed"
+          if echo "$changed" | grep -qE '^(prompts/|golden/|config/thresholds\.yaml|src/|\.github/workflows/prompt-eval\.yml)'; then
+            echo "relevant=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "relevant=false" >> "$GITHUB_OUTPUT"
+            echo "No prompt, dataset, threshold or code changes: eval skipped." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   eval:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:

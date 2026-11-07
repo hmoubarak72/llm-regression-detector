@@ -166,13 +166,14 @@ The workflow is [.github/workflows/prompt-eval.yml](.github/workflows/prompt-eva
 
 1. Repo secrets: `OPENAI_API_KEY`, `SLACK_WEBHOOK_URL` (optional).
    To run without a key, set the repository variable `LLMREG_PROVIDER=mock`.
-2. Branch protection on `main`: require the `eval` status check.
+2. Branch protection on `main`: require a pull request and the `eval` status
+   check. Admins can still bypass for an intentional, reviewed trade-off.
 3. Trigger the workflow once on `main` (Actions -> prompt-eval -> Run workflow)
    to create the first baseline.
 
 | Trigger | Track | Marks baseline | Saves history |
 |---|---|---|---|
-| PR touching `prompts/`, `golden/`, `config/thresholds.yaml`, `src/` | `pr-<n>` | no | no |
+| Any PR (eval runs only if `prompts/`, `golden/`, `config/thresholds.yaml`, `src/` or the workflow changed; otherwise `eval` is skipped, which counts as passing) | `pr-<n>` | no | no |
 | Push to `main` (same paths) | `main` | yes | yes |
 | Nightly 05:00 UTC | `main` | yes | yes |
 
