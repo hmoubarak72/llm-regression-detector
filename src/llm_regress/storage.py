@@ -108,12 +108,20 @@ class Store:
         return self._record(row) if row else None
 
     def latest_baseline(self, exclude_id: int | None = None) -> RunRecord | None:
+        """Most recent baseline that actually ran: skips runs marked 'error' and
+        runs where at least half the cases errored (e.g. a bad API key)."""
         with closing(self._conn()) as c:
-            row = c.execute(
-                "SELECT * FROM runs WHERE is_baseline=1 AND id != ? ORDER BY id DESC LIMIT 1",
+            rows = c.execute(
+                "SELECT * FROM runs WHERE is_baseline=1 AND id != ? ORDER BY id DESC LIMIT 50",
                 (exclude_id or -1,),
-            ).fetchone()
-        return self._record(row) if row else None
+            ).fetchall()
+        for row in rows:
+            rec = self._record(row)
+            broken = rec.status == "error" or (
+                rec.metrics.n_cases and rec.metrics.errors * 2 >= rec.metrics.n_cases)
+            if not broken:
+                return rec
+        return None
 
     def latest_run(self, track: str | None = None, exclude_id: int | None = None) -> RunRecord | None:
         q = "SELECT * FROM runs WHERE id != ?"

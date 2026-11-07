@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import re
 import sys
 from typing import Callable
 
@@ -56,7 +57,8 @@ async def _run_case(case: GoldenCase, prompt: PromptConfig, classifier: Provider
             else:
                 res.judge_score, res.judge_reason = jr.verdict.score, jr.verdict.reason
         except Exception as exc:  # network errors after SDK retries, etc.
-            res.error = f"{type(exc).__name__}: {exc}"[:300]
+            # Redact anything key-shaped: errors end up in public CI logs and PR comments.
+            res.error = re.sub(r"sk-[A-Za-z0-9_\-*]{6,}", "sk-***", f"{type(exc).__name__}: {exc}")[:300]
             return res
     res.passed = bool(
         res.category_match
