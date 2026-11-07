@@ -1,0 +1,117 @@
+name: prompt-eval
+
+on:
+  pull_request:
+    paths:
+      - "prompts/**"
+      - "golden/**"
+      - "config/thresholds.yaml"
+      - "src/**"
+  push:
+    branches: [main]
+    paths:
+      - "prompts/**"
+      - "golden/**"
+      - "config/thresholds.yaml"
+      - "src/**"
+  schedule:
+    # Nightly run on main with no code change. This is what catches
+    # provider-side changes (e.g. a model alias being updated) and slow drift.
+    - cron: "0 5 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: prompt-eval-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+      # Set the repo variable LLMREG_PROVIDER=mock to run the pipeline without an API key.
+      LLMREG_PROVIDER: ${{ vars.LLMREG_PROVIDER }}
+      LLMREG_DB: .regress/history.db
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install
+        run: pip install .
+
+      - name: Validate dataset, prompts and thresholds
+        run: llm-regress validate
+
+      # Run history (SQLite) lives in the Actions cache. Only main/nightly runs
+      # save it, so PR runs read main's history but never write into it.
+      - name: Restore run history
+        uses: actions/cache/restore@v4
+        with:
+          path: .regress
+          key: regress-history-${{ github.run_id }}
+          restore-keys: regress-history-
+
+      - name: Resolve run context
+        id: ctx
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "track=pr-${{ github.event.pull_request.number }}" >> "$GITHUB_OUTPUT"
+            echo "mark=" >> "$GITHUB_OUTPUT"
+          else
+            echo "track=main" >> "$GITHUB_OUTPUT"
+            echo "mark=--mark-baseline" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Run eval
+        id: eval
+        env:
+          LLMREG_CONTEXT: ${{ github.event_name }} by ${{ github.actor }}
+        run: |
+          set +e
+          llm-regress run \
+            --track "${{ steps.ctx.outputs.track }}" \
+            --drift-track main \
+            --require-baseline \
+            ${{ steps.ctx.outputs.mark }}
+          code=$?
+          echo "exit_code=$code" >> "$GITHUB_OUTPUT"
+          if [ -f out/summary.md ]; then cat out/summary.md >> "$GITHUB_STEP_SUMMARY"; fi
+          if [ -f .regress/history.db ]; then echo "has_db=true" >> "$GITHUB_OUTPUT"; fi
+          exit 0
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: eval-report-${{ github.run_id }}
+          path: out/
+          retention-days: 30
+
+      - name: Comment on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('out/summary.md') != ''
+        uses: marocchino/sticky-pull-request-comment@v2
+        with:
+          header: llm-eval
+          path: out/summary.md
+
+      - name: Save run history
+        if: always() && github.event_name != 'pull_request' && steps.eval.outputs.has_db == 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: .regress
+          key: regress-history-${{ github.run_id }}
+
+      # Exit code 1 = critical regression, 2 = pipeline error. Make this job a
+      # required status check in branch protection to block merges.
+      - name: Gate
+        run: exit ${{ steps.eval.outputs.exit_code }}

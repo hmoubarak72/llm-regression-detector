@@ -1,0 +1,44 @@
+# Regression thresholds. Every key can be overridden by an env var named
+# LLMREG_<SECTION>_<KEY>, e.g. LLMREG_OVERALL_CRITICAL=10 or LLMREG_JUDGE_MODEL=gpt-4o.
+
+pass_criteria:
+  # A case passes when the category matches exactly AND the judge scores the
+  # summary at least this (1-5).
+  min_judge_score: 3
+
+# Drops vs baseline, in percentage points, applied to pass rate and category accuracy.
+overall:
+  warn: 3.0
+  critical: 8.0
+
+# Per-category accuracy drops (pp). Wider than overall on purpose: with ~15
+# cases per category one flip is ~6.7pp.
+per_category:
+  warn: 10.0
+  critical: 20.0
+
+# Drop in mean judge score (1-5 scale).
+judge_mean:
+  warn: 0.2
+  critical: 0.5
+
+significance:
+  alpha: 0.05
+  # When true, threshold breaches whose McNemar p >= alpha are downgraded one
+  # level. Off: at this dataset size the test misses real 5-8pp regressions.
+  gate: false
+
+# Slow drift over the `main` track's history.
+drift:
+  window: 7
+  floor: 0.85
+  max_drop: 3.0
+
+runner:
+  concurrency: 8
+  max_retries: 4
+  timeout_s: 60
+
+judge:
+  provider: openai
+  model: gpt-4o
