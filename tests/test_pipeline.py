@@ -113,3 +113,37 @@ def test_dotenv_loader(tmp_path, monkeypatch):
     assert os.environ["A_KEY"] == "x1" and os.environ["B_KEY"] == "y2"
     assert "EMPTY" not in os.environ          # empty values never mask a missing key
     assert os.environ["C_KEY"] == "from-env"  # real environment wins
+
+
+def test_mass_api_failure_is_pipeline_error_not_baseline(env, tmp_path, monkeypatch, capsys):
+    import llm_regress.cli as cli
+
+    class AuthFail:
+        async def complete(self, *a, **k):
+            raise RuntimeError("Error code: 401 - Incorrect API key provided: sk-proj-abcdefghijklmnop")
+
+    assert main(["run", *env, "--track", "main", "--mark-baseline"]) == 0  # good baseline, run #1
+    monkeypatch.setattr(cli, "build_provider", lambda *a, **k: AuthFail())
+    code = main(["run", *env, "--track", "main", "--mark-baseline"])      # broken run #2
+    err = capsys.readouterr().err
+    assert code == 2
+    assert "PIPELINE ERROR: 60/60" in err and "401" in err
+    assert "sk-proj-abcdefghijklmnop" not in err and "sk-***" in err      # key-shaped text redacted
+    store = Store(tmp_path / "h.db")
+    broken = store.get_run(2)
+    assert broken.status == "error" and not broken.is_baseline
+    assert store.latest_baseline().id == 1
+
+
+def test_latest_baseline_skips_mostly_errored_runs(env, tmp_path, monkeypatch):
+    import llm_regress.cli as cli
+    assert main(["run", *env, "--track", "main", "--mark-baseline"]) == 0
+    store = Store(tmp_path / "h.db")
+    # Simulate an old, already-cached broken baseline (written before this guard existed).
+    good = store.get_run(1)
+    bad = good.metrics.model_copy(update={"errors": good.metrics.n_cases, "pass_rate": 0.0})
+    rid = store.save_run(prompt_version="1.0.0", prompt_hash="x", model="m", judge_model="j",
+                         dataset_version="1", dataset_hash="h", track="main", git_sha=None,
+                         metrics=bad, results=[])
+    store.mark_baseline(rid)
+    assert store.latest_baseline().id == 1

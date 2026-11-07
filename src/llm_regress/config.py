@@ -135,6 +135,9 @@ class RunnerConfig(BaseModel):
     concurrency: int = 8
     max_retries: int = 4
     timeout_s: float = 60.0
+    # If this share of cases errors (auth, quota, outage), the run is a
+    # pipeline failure (exit 2), not a quality regression, and is never a baseline.
+    max_error_rate: float = 0.5
 
 
 class JudgeConfig(BaseModel):

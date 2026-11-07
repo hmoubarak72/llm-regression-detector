@@ -38,6 +38,9 @@ runner:
   concurrency: 8
   max_retries: 4
   timeout_s: 60
+  # Share of cases that may error (auth, quota, outage) before the run counts as
+  # a pipeline failure (exit 2) instead of a regression. Such runs never become a baseline.
+  max_error_rate: 0.5
 
 judge:
   provider: openai

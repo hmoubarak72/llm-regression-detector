@@ -100,6 +100,17 @@ def _outputs(args, store: Store, run: RunRecord, baseline: RunRecord | None, com
     return overall, drift
 
 
+def _error_counts(results) -> list[tuple[str, int]]:
+    from collections import Counter
+    return Counter(r.error for r in results if r.error).most_common(3)
+
+
+def _print_error_breakdown(results) -> None:
+    print("Errors (most common):", file=sys.stderr)
+    for err, n in _error_counts(results):
+        print(f"  {n:>3}x {err}", file=sys.stderr)
+
+
 def cmd_run(args) -> int:
     thresholds = Thresholds.load(args.thresholds)
     prompt_path = Path(args.prompt) if args.prompt else resolve_active_prompt(args.prompts_dir)
@@ -131,6 +142,20 @@ def cmd_run(args) -> int:
                             track=args.track, git_sha=_git_sha(), metrics=metrics, results=results)
     run = store.get_run(run_id)
     assert run is not None
+
+    if metrics.errors:
+        _print_error_breakdown(results)
+    if metrics.n_cases and metrics.errors / metrics.n_cases >= thresholds.runner.max_error_rate:
+        # The model never really answered: this says nothing about prompt quality.
+        # Don't compare, don't alert as a regression, and never let it become a baseline.
+        store.set_status(run_id, "error")
+        msg = (f"PIPELINE ERROR: {metrics.errors}/{metrics.n_cases} cases failed to run "
+               f"(limit {thresholds.runner.max_error_rate:.0%}). Not scored, not marked as baseline.")
+        print(f"\n{msg}", file=sys.stderr)
+        write(Path(args.out_dir) / "summary.md",
+              f"## ⛔ LLM eval: PIPELINE ERROR\n\n**{msg}**\n\n"
+              + "\n".join(f"- `{e}` ({n} cases)" for e, n in _error_counts(results)) + "\n")
+        return EXIT_ERROR
 
     if args.baseline == "auto":
         baseline = store.latest_baseline(exclude_id=run_id) or store.latest_run(args.track, exclude_id=run_id)
