@@ -28,6 +28,7 @@ crosses a threshold.
 - [Adjusting thresholds](#adjusting-thresholds)
 - [CI setup](#ci-setup)
 - [Docker](#docker)
+- [Using with Claude](#using-with-claude)
 - [How it works](#how-it-works)
 - [Architecture decisions](#architecture-decisions)
 - [Known limitations](#known-limitations)
@@ -202,6 +203,17 @@ docker run --rm \
 The image contains the runner, prompts, golden dataset and thresholds.
 Mount `/app/prompts` or `/app/golden` to evaluate a different checkout without
 rebuilding. Use `-e LLMREG_PROVIDER=mock` for an offline smoke test.
+
+## Using with Claude
+
+[.claude/skills/llm-regress/SKILL.md](.claude/skills/llm-regress/SKILL.md) is
+a Claude skill that teaches Claude how to run `llm-regress`, read its reports
+and follow the rules above (new prompt versions, no LLM-written labels, no
+loosening thresholds to pass a PR). Claude Code picks it up automatically when
+opened in this repo. For Claude Cowork or claude.ai, zip the
+`.claude/skills/llm-regress` folder and upload it as a custom skill.
+
+Update the skill in the same PR whenever the CLI, thresholds or workflow change.
 
 ## How it works
 
